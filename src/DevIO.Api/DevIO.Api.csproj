@@ -18,12 +18,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\..\Labs\API\src\DevIO.Business\DevIO.Business.csproj" />
-    <ProjectReference Include="..\..\..\Labs\API\src\DevIO.Data\DevIO.Data.csproj" />
+    <Folder Include="wwwroot\imagens\" />
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="wwwroot\imagens\" />
+    <ProjectReference Include="..\DevIO.Business\DevIO.Business.csproj" />
+    <ProjectReference Include="..\DevIO.Data\DevIO.Data.csproj" />
   </ItemGroup>
 
 </Project>
