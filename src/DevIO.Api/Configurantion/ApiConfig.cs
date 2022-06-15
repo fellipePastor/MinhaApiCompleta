@@ -10,6 +10,22 @@ namespace DevIO.Api.Configurantion
         {
             services.AddControllers();
 
+            services.AddApiVersioning(options =>
+            {
+                options.AssumeDefaultVersionWhenUnspecified = true;
+                options.DefaultApiVersion = new ApiVersion(1,0);
+                options.ReportApiVersions = true;
+
+            });
+
+            services.AddVersionedApiExplorer(options =>
+            {
+                options.GroupNameFormat = "'v'VVV";
+                options.SubstituteApiVersionInUrl = true;   
+
+            });
+
+
             services.Configure<ApiBehaviorOptions>(options =>
             {
                 options.SuppressModelStateInvalidFilter = true;
@@ -22,6 +38,15 @@ namespace DevIO.Api.Configurantion
                 options.AddPolicy("Developtment",
                     builder => builder.AllowAnyOrigin()
                     .AllowAnyMethod()
+                    .AllowAnyHeader());
+            });
+            services.AddCors(options =>
+            {
+                options.AddPolicy("Production",
+                    builder => builder.WithMethods("Get")
+                    .WithOrigins("http://teste.com")
+                    .SetIsOriginAllowedToAllowWildcardSubdomains()
+                    //.WithHeaders(HeaderNames.Contentype, "x-custom-header")
                     .AllowAnyHeader());
             });
 

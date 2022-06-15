@@ -1,106 +1,81 @@
 ﻿using AutoMapper;
+using DevIO.Api.Controllers;
+using DevIO.Api.Extensions;
 using DevIO.Api.ViewModels;
 using DevIO.Business.Intefaces;
 using DevIO.Business.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
+using Thinktecture.IdentityModel.Authorization.Mvc;
 
-namespace DevIO.Api.Controllers
+
+namespace DevIO.Api.V1.Controllers
 {
-    [Route("api/[controller]")]
-    [ApiController]
+    [Authorize]
+    [ApiVersion("1.0")]
+    [Route("api/v{version:apiVersion}/produtos")]
     public class ProdutosController : MainController
     {
         private readonly IProdutoRepository _produtoRepository;
-        private readonly IMapper _mapper;
         private readonly IProdutoService _produtoService;
-        private readonly INotificador _notificador;
+        private readonly IMapper _mapper;
+        private readonly IHttpContextAccessor _httpContextAccessor;
 
-        public ProdutosController(IProdutoRepository produtoRepository,
-                                  IMapper mapper,
+        public ProdutosController(INotificador notificador,
+                                  IProdutoRepository produtoRepository,
                                   IProdutoService produtoService,
-                                  INotificador notificador) : base(notificador)
+                                  IMapper mapper,
+                                  IUser user,
+                                  IHttpContextAccessor httpContextAccessor) : base(notificador, user)
         {
             _produtoRepository = produtoRepository;
-            _mapper = mapper;
             _produtoService = produtoService;
-            _notificador = notificador;
+            _mapper = mapper;
+            _httpContextAccessor = httpContextAccessor;
         }
 
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<ProdutoViewModel>>> GetAll()
+        public async Task<IEnumerable<ProdutoViewModel>> ObterTodos()
         {
-            var produtoViewModel = _mapper.Map<IEnumerable<ProdutoViewModel>>(await _produtoRepository.ObterProdutosFornecedores());
-
-            if (produtoViewModel == null) return NotFound();
-
-            return Ok(produtoViewModel);
-
+            return _mapper.Map<IEnumerable<ProdutoViewModel>>(await _produtoRepository.ObterProdutosFornecedores());
         }
 
         [HttpGet("{id:guid}")]
-        public async Task<ActionResult<ProdutoViewModel>> GetById(Guid id)
+        public async Task<ActionResult<ProdutoViewModel>> ObterPorId(Guid id)
         {
             var produtoViewModel = await ObterProduto(id);
 
             if (produtoViewModel == null) return NotFound();
 
-            return Ok(produtoViewModel);
+            return produtoViewModel;
         }
 
+        [ClaimsAuthorize("Produto", "Adicionar")]
         [HttpPost]
-
-        public async Task<ActionResult<ProdutoViewModel>> Post(ProdutoViewModel produtoViewModel)
+        public async Task<ActionResult<ProdutoViewModel>> Adicionar(ProdutoViewModel produtoViewModel)
         {
             if (!ModelState.IsValid) return CustomResponse(ModelState);
 
             var imagemNome = Guid.NewGuid() + "_" + produtoViewModel.Imagem;
-
-            if(!UploadArquivo(produtoViewModel.ImagemUpload, imagemNome))
+            if (!UploadArquivo(produtoViewModel.ImagemUpload, imagemNome))
             {
                 return CustomResponse(produtoViewModel);
             }
 
             produtoViewModel.Imagem = imagemNome;
-
-            var produto = _mapper.Map<Produto>(produtoViewModel);
-            await _produtoService.Adicionar(produto);
-
-            return CustomResponse(produtoViewModel);
-        }
-
-        [HttpPost("otherpost")]
-        public async Task<ActionResult<ProdutoViewModel>> OtherPost(ProdutoImagemViewModel produtoViewModel)
-        {
-            if (!ModelState.IsValid) return CustomResponse(ModelState);
-
-            var imgPrefixo = Guid.NewGuid() + "_";
-            if (!await UploadArquivoAlternativo(produtoViewModel.ImagemUpload, imgPrefixo))
-            {
-                return CustomResponse(ModelState);
-            }
-
-            produtoViewModel.Imagem = imgPrefixo + produtoViewModel.ImagemUpload.FileName;
             await _produtoService.Adicionar(_mapper.Map<Produto>(produtoViewModel));
 
             return CustomResponse(produtoViewModel);
         }
 
-        [RequestSizeLimit(40000000)]
-        //[DisableRequestSizeLimit]
-        [HttpPost("image")]
-        public ActionResult PostImage(IFormFile file)
-        {
-            return Ok(file);
-        }
-
-
+        [ClaimsAuthorize("Produto", "Atualizar")]
         [HttpPut("{id:guid}")]
-        public async Task<IActionResult> Put(Guid id, ProdutoViewModel produtoViewModel)
+        public async Task<IActionResult> Atualizar(Guid id, ProdutoViewModel produtoViewModel)
         {
             if (id != produtoViewModel.Id)
             {
@@ -135,19 +110,24 @@ namespace DevIO.Api.Controllers
             await _produtoService.Atualizar(_mapper.Map<Produto>(produtoAtualizacao));
 
             return CustomResponse(produtoViewModel);
-
         }
 
-            [HttpDelete("{id:guid}")]
-        public async Task<ActionResult> Delete(Guid id)
+        [ClaimsAuthorize("Produto", "Excluir")]
+        [HttpDelete("{id:guid}")]
+        public async Task<ActionResult<ProdutoViewModel>> Excluir(Guid id)
         {
-            var produtoViewModel = await ObterProduto(id);
+            var produto = await ObterProduto(id);
 
-            if (produtoViewModel == null) return NotFound();
+            if (produto == null) return NotFound();
 
             await _produtoService.Remover(id);
 
-            return CustomResponse();
+            return CustomResponse(produto);
+        }
+
+        private async Task<ProdutoViewModel> ObterProduto(Guid id)
+        {
+            return _mapper.Map<ProdutoViewModel>(await _produtoRepository.ObterProdutoFornecedor(id));
         }
 
         private bool UploadArquivo(string arquivo, string imgNome)
@@ -160,7 +140,7 @@ namespace DevIO.Api.Controllers
 
             var imageDataByteArray = Convert.FromBase64String(arquivo);
 
-            var filePath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot/imagens", imgNome);
+            var filePath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", imgNome);
 
             if (System.IO.File.Exists(filePath))
             {
@@ -172,6 +152,38 @@ namespace DevIO.Api.Controllers
 
             return true;
         }
+
+        #region UploadAlternativo
+
+        [ClaimsAuthorize("Produto", "Adicionar")]
+        [HttpPost("Adicionar")]
+        public async Task<ActionResult<ProdutoViewModel>> AdicionarAlternativo(
+            // Binder personalizado para envio de IFormFile e ViewModel dentro de um FormData compatível com .NET Core 3.1 ou superior (system.text.json)
+            [ModelBinder(BinderType = typeof(ProdutoModelBinder))]
+            ProdutoImagemViewModel produtoViewModel)
+        {
+            if (!ModelState.IsValid) return CustomResponse(ModelState);
+
+            var imgPrefixo = Guid.NewGuid() + "_";
+            if (!await UploadArquivoAlternativo(produtoViewModel.ImagemUpload, imgPrefixo))
+            {
+                return CustomResponse(ModelState);
+            }
+
+            produtoViewModel.Imagem = imgPrefixo + produtoViewModel.ImagemUpload.FileName;
+            await _produtoService.Adicionar(_mapper.Map<Produto>(produtoViewModel));
+
+            return CustomResponse(produtoViewModel);
+        }
+
+        [RequestSizeLimit(40000000)]
+        //[DisableRequestSizeLimit]
+        [HttpPost("imagem")]
+        public ActionResult AdicionarImagem(IFormFile file)
+        {
+            return Ok(file);
+        }
+
         private async Task<bool> UploadArquivoAlternativo(IFormFile arquivo, string imgPrefixo)
         {
             if (arquivo == null || arquivo.Length == 0)
@@ -180,7 +192,7 @@ namespace DevIO.Api.Controllers
                 return false;
             }
 
-            var path = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot/imagens", imgPrefixo + arquivo.FileName);
+            var path = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", imgPrefixo + arquivo.FileName);
 
             if (System.IO.File.Exists(path))
             {
@@ -196,9 +208,6 @@ namespace DevIO.Api.Controllers
             return true;
         }
 
-        public async Task<ProdutoViewModel> ObterProduto(Guid id)
-        {
-            return _mapper.Map<ProdutoViewModel>(await _produtoRepository.ObterProdutoFornecedor(id));
-        }
+        #endregion
     }
 }
