@@ -51,7 +51,7 @@ namespace DevIO.Api.Configuration
 
         public static IApplicationBuilder UseSwaggerConfig(this IApplicationBuilder app, IApiVersionDescriptionProvider provider)
         {
-           // app.UseMiddleware<SwaggerAuthorizedMiddleware>();
+            //app.UseMiddleware<SwaggerAuthorizedMiddleware>();
             app.UseSwagger();
             app.UseSwaggerUI(
                 options =>
@@ -61,6 +61,7 @@ namespace DevIO.Api.Configuration
                         options.SwaggerEndpoint($"/swagger/{description.GroupName}/swagger.json", description.GroupName.ToUpperInvariant());
                     }
                 });
+
             return app;
         }
     }
@@ -80,7 +81,7 @@ namespace DevIO.Api.Configuration
         }
 
         static OpenApiInfo CreateInfoForApiVersion(ApiVersionDescription description)
-        {
+       {
             var info = new OpenApiInfo()
             {
                 Title = "API - desenvolvedor.io",
